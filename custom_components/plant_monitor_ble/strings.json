@@ -1,0 +1,55 @@
+{
+  "title": "Plant Monitor BLE",
+  "config": {
+    "step": {
+      "bluetooth_confirm": {
+        "title": "Add {name}",
+        "description": "Set up this passively discovered Plant Monitor BLE device? Current firmware reports every 30 seconds using the fixed 11 nF soil-sensing range."
+      },
+      "user": {
+        "title": "Select a plant monitor",
+        "description": "Select a compatible Plant Monitor BLE device currently in Bluetooth range.",
+        "data": {
+          "address": "Device"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This plant monitor is already configured.",
+      "already_in_progress": "Configuration for this plant monitor is already in progress.",
+      "no_devices_found": "No compatible Plant Monitor BLE devices were found. Wait for the next advertising burst and try again.",
+      "not_supported": "The Bluetooth advertisement is not a supported Plant Monitor BLE protocol frame."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "bottom_moisture": {"name": "Bottom soil moisture"},
+      "middle_moisture": {"name": "Middle soil moisture"},
+      "top_moisture": {"name": "Top soil moisture"},
+      "air_temperature": {"name": "Air temperature"},
+      "relative_humidity": {"name": "Relative humidity"},
+      "battery_voltage": {"name": "Battery voltage"},
+      "bottom_filtered_count": {"name": "Bottom filtered TSC count"},
+      "middle_filtered_count": {"name": "Middle filtered TSC count"},
+      "top_filtered_count": {"name": "Top filtered TSC count"},
+      "packet_id": {"name": "Packet ID"},
+      "calibration_revision": {"name": "Calibration revision"},
+      "status_word": {"name": "Status word"},
+      "rssi": {"name": "Signal strength"},
+      "last_received": {"name": "Last received"}
+    },
+    "binary_sensor": {
+      "calibration_invalid": {"name": "Calibration invalid"},
+      "battery_low": {"name": "Battery low"},
+      "bottom_saturation": {"name": "Bottom saturation"},
+      "middle_saturation": {"name": "Middle saturation"},
+      "top_saturation": {"name": "Top saturation"},
+      "tsc_acquisition_fault": {"name": "TSC acquisition fault"},
+      "environmental_sensor_fault": {"name": "Environmental sensor fault"},
+      "battery_measurement_fault": {"name": "Battery measurement fault"},
+      "i2c_fault": {"name": "I2C fault"},
+      "ble_fault": {"name": "BLE fault"},
+      "oscillator_configuration_fault": {"name": "Oscillator or configuration fault"}
+    }
+  }
+}
