@@ -1,3 +1,19 @@
+Metadata-Version: 2.4
+Name: ha-plant-monitor-ble
+Version: 2.0.0
+Summary: Home Assistant custom integration for a three-zone BLE plant monitor
+License-Expression: MIT
+Requires-Python: >=3.13
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Provides-Extra: test
+Requires-Dist: homeassistant; extra == "test"
+Requires-Dist: pytest; extra == "test"
+Requires-Dist: pytest-homeassistant-custom-component; extra == "test"
+Requires-Dist: pytest-cov; extra == "test"
+Requires-Dist: ruff; extra == "test"
+Dynamic: license-file
+
 # Plant Monitor BLE
 
 A local-push Home Assistant custom integration for a battery-powered,

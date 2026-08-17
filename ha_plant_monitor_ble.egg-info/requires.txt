@@ -1,0 +1,7 @@
+
+[test]
+homeassistant
+pytest
+pytest-homeassistant-custom-component
+pytest-cov
+ruff

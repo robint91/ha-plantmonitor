@@ -17,10 +17,9 @@ if TYPE_CHECKING:
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 ADDRESS = "AA:BB:CC:DD:EE:FF"
-LEGACY_FRAME = bytes.fromhex(
-    "01 2A 01 00 07 38 E8 03 D0 07 B8 0B D2 04 D7 11 C5 22 AB 0B 29 09 2E 16"
+FRAME = bytes.fromhex(
+    "02 2A E8 03 4C 04 B0 04 D0 07 34 08 98 08 B8 0B 1C 0C 80 0C 29 09 2E 16 39 30 00"
 )
-FRAME = LEGACY_FRAME[:5] + b"\x15" + LEGACY_FRAME[6:]
 
 
 if importlib.util.find_spec("homeassistant") is not None:

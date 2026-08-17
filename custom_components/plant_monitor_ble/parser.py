@@ -12,10 +12,11 @@ from .const import (
     FRAME_LENGTH,
     PROTOCOL_VERSION,
 )
-from .types import PlantMonitorAdvertisement, StatusFlags
+from .types import PlantMonitorAdvertisement
 
-_FRAME: Final = struct.Struct("<BBHBBHHHHHHHhH")
+_FRAME: Final = struct.Struct("<BB9HhH")
 _INVALID_UNSIGNED: Final = 0xFFFF
+_INVALID_ILLUMINANCE: Final = 0xFFFFFF
 _INVALID_TEMPERATURE: Final = -32768
 _MAX_PERCENTAGE_RAW: Final = 10000
 
@@ -28,11 +29,6 @@ def _scaled_percentage(value: int) -> float | None:
     return None if value == _INVALID_UNSIGNED else value / 100
 
 
-def _decode_flags(status: int) -> StatusFlags:
-    bits = tuple(bool(status & (1 << bit)) for bit in range(16))
-    return StatusFlags(*bits)
-
-
 def parse_frame(
     frame: bytes,
     *,
@@ -41,41 +37,29 @@ def parse_frame(
     received_at: datetime | None = None,
 ) -> PlantMonitorAdvertisement | None:
     """Decode a protocol frame, returning None when it is not compatible."""
-    if len(frame) != FRAME_LENGTH:
+    if len(frame) < FRAME_LENGTH:
         return None
 
     (
         version,
         packet_id,
-        status,
-        revision,
-        range_byte,
-        bottom_filtered,
-        middle_filtered,
-        top_filtered,
-        bottom_moisture,
-        middle_moisture,
-        top_moisture,
-        battery_mv,
+        bottom_tsc_1nf,
+        bottom_tsc_11nf,
+        bottom_tsc_48nf,
+        middle_tsc_1nf,
+        middle_tsc_11nf,
+        middle_tsc_48nf,
+        top_tsc_1nf,
+        top_tsc_11nf,
+        top_tsc_48nf,
         temperature,
         humidity,
-    ) = _FRAME.unpack(frame)
+    ) = _FRAME.unpack_from(frame)
+    illuminance = int.from_bytes(frame[24:27], "little")
 
-    if version != PROTOCOL_VERSION or range_byte & 0xC0:
-        return None
-    moisture_values = (bottom_moisture, middle_moisture, top_moisture)
-    if any(
-        value != _INVALID_UNSIGNED and value > _MAX_PERCENTAGE_RAW
-        for value in moisture_values
-    ):
+    if version != PROTOCOL_VERSION:
         return None
     if humidity != _INVALID_UNSIGNED and humidity > _MAX_PERCENTAGE_RAW:
-        return None
-
-    bottom_range = range_byte & 0x03
-    middle_range = (range_byte >> 2) & 0x03
-    top_range = (range_byte >> 4) & 0x03
-    if any(code not in range(4) for code in (bottom_range, middle_range, top_range)):
         return None
 
     return PlantMonitorAdvertisement(
@@ -84,32 +68,34 @@ def parse_frame(
         received_at=received_at or datetime.now(timezone.utc),
         version=version,
         packet_id=packet_id,
-        status=status,
-        flags=_decode_flags(status),
-        calibration_revision=revision,
-        bottom_range_code=bottom_range,
-        middle_range_code=middle_range,
-        top_range_code=top_range,
-        bottom_filtered_raw=bottom_filtered,
-        middle_filtered_raw=middle_filtered,
-        top_filtered_raw=top_filtered,
-        bottom_filtered_count=_optional_unsigned(bottom_filtered),
-        middle_filtered_count=_optional_unsigned(middle_filtered),
-        top_filtered_count=_optional_unsigned(top_filtered),
-        bottom_moisture_raw=bottom_moisture,
-        middle_moisture_raw=middle_moisture,
-        top_moisture_raw=top_moisture,
-        bottom_moisture=_scaled_percentage(bottom_moisture),
-        middle_moisture=_scaled_percentage(middle_moisture),
-        top_moisture=_scaled_percentage(top_moisture),
-        battery_mv_raw=battery_mv,
-        battery_mv=_optional_unsigned(battery_mv),
+        bottom_tsc_1nf_raw=bottom_tsc_1nf,
+        bottom_tsc_11nf_raw=bottom_tsc_11nf,
+        bottom_tsc_48nf_raw=bottom_tsc_48nf,
+        middle_tsc_1nf_raw=middle_tsc_1nf,
+        middle_tsc_11nf_raw=middle_tsc_11nf,
+        middle_tsc_48nf_raw=middle_tsc_48nf,
+        top_tsc_1nf_raw=top_tsc_1nf,
+        top_tsc_11nf_raw=top_tsc_11nf,
+        top_tsc_48nf_raw=top_tsc_48nf,
+        bottom_tsc_1nf=_optional_unsigned(bottom_tsc_1nf),
+        bottom_tsc_11nf=_optional_unsigned(bottom_tsc_11nf),
+        bottom_tsc_48nf=_optional_unsigned(bottom_tsc_48nf),
+        middle_tsc_1nf=_optional_unsigned(middle_tsc_1nf),
+        middle_tsc_11nf=_optional_unsigned(middle_tsc_11nf),
+        middle_tsc_48nf=_optional_unsigned(middle_tsc_48nf),
+        top_tsc_1nf=_optional_unsigned(top_tsc_1nf),
+        top_tsc_11nf=_optional_unsigned(top_tsc_11nf),
+        top_tsc_48nf=_optional_unsigned(top_tsc_48nf),
         temperature_raw=temperature,
         temperature_c=(
             None if temperature == _INVALID_TEMPERATURE else temperature / 100
         ),
         humidity_raw=humidity,
         humidity=_scaled_percentage(humidity),
+        illuminance_raw=illuminance,
+        illuminance_lux=(
+            None if illuminance == _INVALID_ILLUMINANCE else illuminance / 100
+        ),
     )
 
 

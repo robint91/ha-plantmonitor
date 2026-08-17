@@ -4,7 +4,7 @@
     "step": {
       "bluetooth_confirm": {
         "title": "Add {name}",
-        "description": "Set up this passively discovered Plant Monitor BLE device? Current firmware reports every 30 seconds using the fixed 11 nF soil-sensing range."
+        "description": "Set up this passively discovered Plant Monitor BLE device? Protocol v2 reports all three soil-sensing capacitor ranges for each zone every 30 seconds."
       },
       "user": {
         "title": "Select a plant monitor",
@@ -23,33 +23,21 @@
   },
   "entity": {
     "sensor": {
-      "bottom_moisture": {"name": "Bottom soil moisture"},
-      "middle_moisture": {"name": "Middle soil moisture"},
-      "top_moisture": {"name": "Top soil moisture"},
       "air_temperature": {"name": "Air temperature"},
       "relative_humidity": {"name": "Relative humidity"},
-      "battery_voltage": {"name": "Battery voltage"},
-      "bottom_filtered_count": {"name": "Bottom filtered TSC count"},
-      "middle_filtered_count": {"name": "Middle filtered TSC count"},
-      "top_filtered_count": {"name": "Top filtered TSC count"},
+      "illuminance": {"name": "Illuminance"},
+      "bottom_tsc_1nf": {"name": "Bottom TSC 1 nF"},
+      "bottom_tsc_11nf": {"name": "Bottom TSC 11 nF"},
+      "bottom_tsc_48nf": {"name": "Bottom TSC 48 nF"},
+      "middle_tsc_1nf": {"name": "Middle TSC 1 nF"},
+      "middle_tsc_11nf": {"name": "Middle TSC 11 nF"},
+      "middle_tsc_48nf": {"name": "Middle TSC 48 nF"},
+      "top_tsc_1nf": {"name": "Top TSC 1 nF"},
+      "top_tsc_11nf": {"name": "Top TSC 11 nF"},
+      "top_tsc_48nf": {"name": "Top TSC 48 nF"},
       "packet_id": {"name": "Packet ID"},
-      "calibration_revision": {"name": "Calibration revision"},
-      "status_word": {"name": "Status word"},
       "rssi": {"name": "Signal strength"},
       "last_received": {"name": "Last received"}
-    },
-    "binary_sensor": {
-      "calibration_invalid": {"name": "Calibration invalid"},
-      "battery_low": {"name": "Battery low"},
-      "bottom_saturation": {"name": "Bottom saturation"},
-      "middle_saturation": {"name": "Middle saturation"},
-      "top_saturation": {"name": "Top saturation"},
-      "tsc_acquisition_fault": {"name": "TSC acquisition fault"},
-      "environmental_sensor_fault": {"name": "Environmental sensor fault"},
-      "battery_measurement_fault": {"name": "Battery measurement fault"},
-      "i2c_fault": {"name": "I2C fault"},
-      "ble_fault": {"name": "BLE fault"},
-      "oscillator_configuration_fault": {"name": "Oscillator or configuration fault"}
     }
   }
 }

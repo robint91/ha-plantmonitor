@@ -1,4 +1,4 @@
-"""Tests for the pure Plant Monitor protocol parser."""
+"""Tests for the pure Plant Monitor protocol-v2 parser."""
 
 import struct
 from dataclasses import FrozenInstanceError
@@ -6,9 +6,14 @@ from datetime import datetime, timezone
 
 import pytest
 
-from custom_components.plant_monitor_ble.parser import PacketDeduplicator, parse_frame
+from custom_components.plant_monitor_ble.const import COMPANY_ID
+from custom_components.plant_monitor_ble.parser import (
+    PacketDeduplicator,
+    parse_frame,
+    parse_manufacturer_data,
+)
 
-from .conftest import ADDRESS, FRAME, LEGACY_FRAME
+from .conftest import ADDRESS, FRAME
 
 
 def _replace_u16(frame: bytes, offset: int, value: int) -> bytes:
@@ -17,36 +22,30 @@ def _replace_u16(frame: bytes, offset: int, value: int) -> bytes:
     return bytes(changed)
 
 
-def test_known_good_vector() -> None:
+def test_exact_firmware_vector() -> None:
     received_at = datetime(2026, 1, 2, 3, 4, tzinfo=timezone.utc)
-    result = parse_frame(
-        LEGACY_FRAME, address=ADDRESS, rssi=-67, received_at=received_at
-    )
+    result = parse_frame(FRAME, address=ADDRESS, rssi=-67, received_at=received_at)
     assert result is not None
-    assert result.version == 1
+    assert result.version == 2
     assert result.packet_id == 42
-    assert result.status == 0x0001
-    assert result.calibration_revision == 7
     assert (
-        result.bottom_range_code,
-        result.middle_range_code,
-        result.top_range_code,
-    ) == (
-        0,
-        2,
-        3,
-    )
+        result.bottom_tsc_1nf,
+        result.bottom_tsc_11nf,
+        result.bottom_tsc_48nf,
+    ) == (1000, 1100, 1200)
     assert (
-        result.bottom_filtered_count,
-        result.middle_filtered_count,
-        result.top_filtered_count,
-    ) == (1000, 2000, 3000)
-    assert result.bottom_moisture == 12.34
-    assert result.middle_moisture == 45.67
-    assert result.top_moisture == 89.01
-    assert result.battery_mv == 2987
+        result.middle_tsc_1nf,
+        result.middle_tsc_11nf,
+        result.middle_tsc_48nf,
+    ) == (2000, 2100, 2200)
+    assert (
+        result.top_tsc_1nf,
+        result.top_tsc_11nf,
+        result.top_tsc_48nf,
+    ) == (3000, 3100, 3200)
     assert result.temperature_c == 23.45
     assert result.humidity == 56.78
+    assert result.illuminance_lux == 123.45
     assert result.address == ADDRESS
     assert result.rssi == -67
     assert result.received_at == received_at
@@ -63,71 +62,80 @@ def test_signed_negative_temperature() -> None:
     assert result.temperature_c == -12.34
 
 
-@pytest.mark.parametrize("offset", [6, 8, 10, 12, 14, 16, 18, 22])
-def test_unsigned_invalid_sentinels(offset: int) -> None:
+@pytest.mark.parametrize("offset", range(2, 20, 2))
+def test_tsc_invalid_sentinels_preserve_raw_value(offset: int) -> None:
     result = parse_frame(_replace_u16(FRAME, offset, 0xFFFF), address=ADDRESS)
     assert result is not None
-    converted = {
-        6: result.bottom_filtered_count,
-        8: result.middle_filtered_count,
-        10: result.top_filtered_count,
-        12: result.bottom_moisture,
-        14: result.middle_moisture,
-        16: result.top_moisture,
-        18: result.battery_mv,
-        22: result.humidity,
-    }
-    assert converted[offset] is None
-    if offset == 12:
-        assert result.bottom_moisture_raw == 0xFFFF
+    field_index = (offset - 2) // 2
+    fields = (
+        "bottom_tsc_1nf",
+        "bottom_tsc_11nf",
+        "bottom_tsc_48nf",
+        "middle_tsc_1nf",
+        "middle_tsc_11nf",
+        "middle_tsc_48nf",
+        "top_tsc_1nf",
+        "top_tsc_11nf",
+        "top_tsc_48nf",
+    )
+    field = fields[field_index]
+    assert getattr(result, field) is None
+    assert getattr(result, f"{field}_raw") == 0xFFFF
 
 
-def test_temperature_invalid_sentinel() -> None:
+def test_environmental_invalid_sentinels() -> None:
     changed = bytearray(FRAME)
-    struct.pack_into("<h", changed, 20, -32768)
+    changed[20:22] = b"\x00\x80"
+    changed[22:24] = b"\xff\xff"
+    changed[24:27] = b"\xff\xff\xff"
     result = parse_frame(bytes(changed), address=ADDRESS)
     assert result is not None
     assert result.temperature_c is None
+    assert result.humidity is None
+    assert result.illuminance_lux is None
+    assert result.temperature_raw == -32768
+    assert result.humidity_raw == 0xFFFF
+    assert result.illuminance_raw == 0xFFFFFF
 
 
-@pytest.mark.parametrize("frame", [FRAME[:-1], FRAME + b"\x00"])
-def test_wrong_frame_length(frame: bytes) -> None:
-    assert parse_frame(frame, address=ADDRESS) is None
+@pytest.mark.parametrize("length", [0, 1, 26])
+def test_truncated_packet(length: int) -> None:
+    assert parse_frame(FRAME[:length], address=ADDRESS) is None
 
 
-def test_unsupported_version() -> None:
-    assert parse_frame(bytes([2]) + FRAME[1:], address=ADDRESS) is None
-
-
-def test_reserved_range_bits() -> None:
-    changed = bytearray(FRAME)
-    changed[5] |= 0x40
-    assert parse_frame(bytes(changed), address=ADDRESS) is None
-
-
-def test_current_firmware_fixed_11_nf_range() -> None:
-    changed = bytearray(FRAME)
-    changed[5] = 0x15  # range code 1 in all three two-bit fields
-    result = parse_frame(bytes(changed), address=ADDRESS)
+def test_trailing_bytes_are_ignored() -> None:
+    result = parse_frame(FRAME + b"\xaa", address=ADDRESS)
     assert result is not None
-    assert (
-        result.bottom_range_code,
-        result.middle_range_code,
-        result.top_range_code,
-    ) == (1, 1, 1)
+    assert result.illuminance_lux == 123.45
 
 
-@pytest.mark.parametrize("offset", [12, 14, 16, 22])
-def test_out_of_range_percentages(offset: int) -> None:
-    assert parse_frame(_replace_u16(FRAME, offset, 10001), address=ADDRESS) is None
+@pytest.mark.parametrize("version", [0, 1, 3, 255])
+def test_unsupported_version(version: int) -> None:
+    assert parse_frame(bytes([version]) + FRAME[1:], address=ADDRESS) is None
 
 
-@pytest.mark.parametrize("bit", range(16))
-def test_every_status_flag(bit: int) -> None:
-    result = parse_frame(_replace_u16(FRAME, 2, 1 << bit), address=ADDRESS)
+def test_out_of_range_humidity() -> None:
+    assert parse_frame(_replace_u16(FRAME, 22, 10001), address=ADDRESS) is None
+
+
+def test_manufacturer_data_company_id() -> None:
+    assert parse_manufacturer_data({COMPANY_ID: FRAME}, address=ADDRESS) is not None
+    assert parse_manufacturer_data({0x1234: FRAME}, address=ADDRESS) is None
+
+
+def test_custom_payload_has_no_battery_or_firmware_moisture() -> None:
+    result = parse_frame(FRAME, address=ADDRESS)
     assert result is not None
-    flags = list(result.flags.as_dict().values())
-    assert flags == [index == bit for index in range(16)]
+    for field in (
+        "battery_mv",
+        "battery_percentage",
+        "bottom_moisture",
+        "middle_moisture",
+        "top_moisture",
+        "calibration_revision",
+        "status",
+    ):
+        assert not hasattr(result, field)
 
 
 def test_packet_id_duplicate_suppression_and_timeout() -> None:
@@ -137,10 +145,11 @@ def test_packet_id_duplicate_suppression_and_timeout() -> None:
     assert not deduplicator.is_duplicate(ADDRESS, 42, now=160)
 
 
-def test_packet_id_wraparound() -> None:
+def test_packet_id_rollover() -> None:
     deduplicator = PacketDeduplicator()
     assert not deduplicator.is_duplicate(ADDRESS, 255, now=1)
     assert not deduplicator.is_duplicate(ADDRESS, 0, now=2)
+    assert not deduplicator.is_duplicate(ADDRESS, 255, now=3)
 
 
 def test_same_packet_id_different_addresses() -> None:

@@ -18,7 +18,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate entries from the autoscaling-era entity model."""
     from homeassistant.helpers import entity_registry as er
 
-    from .const import CONFIG_ENTRY_VERSION, REMOVED_RANGE_ENTITY_KEYS
+    from .const import CONFIG_ENTRY_VERSION, REMOVED_ENTITY_KEYS
 
     if entry.version > CONFIG_ENTRY_VERSION:
         return False
@@ -28,15 +28,15 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     registry = er.async_get(hass)
     address = entry.unique_id
     if address is not None:
-        removed_unique_ids = {f"{address}-{key}" for key in REMOVED_RANGE_ENTITY_KEYS}
+        removed_unique_ids = {f"{address}-{key}" for key in REMOVED_ENTITY_KEYS}
         for registry_entry in er.async_entries_for_config_entry(
             registry, entry.entry_id
         ):
             if registry_entry.unique_id in removed_unique_ids:
                 registry.async_remove(registry_entry.entity_id)
 
-    # Released v1 entries contain only the Bluetooth address. No HA-side
-    # calibration values existed to transform; firmware remains authoritative.
+    # Released entries contain only the Bluetooth address. Protocol v2 has no
+    # firmware calibration data to transform into an HA-side strategy.
     hass.config_entries.async_update_entry(entry, version=CONFIG_ENTRY_VERSION)
     return True
 
@@ -63,9 +63,7 @@ async def async_setup_entry(
         connectable=False,
     )
     entry.runtime_data = coordinator
-    await hass.config_entries.async_forward_entry_setups(
-        entry, (Platform.SENSOR, Platform.BINARY_SENSOR)
-    )
+    await hass.config_entries.async_forward_entry_setups(entry, (Platform.SENSOR,))
     entry.async_on_unload(coordinator.async_start())
     return True
 
@@ -76,6 +74,4 @@ async def async_unload_entry(
     """Unload a Plant Monitor BLE config entry."""
     from homeassistant.const import Platform
 
-    return await hass.config_entries.async_unload_platforms(
-        entry, (Platform.SENSOR, Platform.BINARY_SENSOR)
-    )
+    return await hass.config_entries.async_unload_platforms(entry, (Platform.SENSOR,))

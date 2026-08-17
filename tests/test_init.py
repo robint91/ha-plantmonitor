@@ -40,29 +40,50 @@ async def test_setup_and_unload(
 
 async def test_manifest_loads(hass: HomeAssistant) -> None:
     integration = await loader.async_get_integration(hass, DOMAIN)
-    assert integration.manifest["version"] == "1.1.0"
+    assert integration.manifest["version"] == "2.0.0"
     assert integration.manifest["iot_class"] == "local_push"
     assert integration.manifest["bluetooth"] == [
         {
             "connectable": False,
             "manufacturer_id": 65535,
-            "manufacturer_data_start": [1],
+            "manufacturer_data_start": [2],
         }
     ]
 
 
-async def test_migrate_removes_obsolete_range_entities(
+async def test_migrate_removes_obsolete_protocol_v1_entities(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry
 ) -> None:
     registry = er.async_get(hass)
-    old_entity = registry.async_get_or_create(
+    old_range_entity = registry.async_get_or_create(
         domain=Platform.SENSOR,
         platform=DOMAIN,
         unique_id=f"{ADDRESS}-bottom_range",
         config_entry=mock_config_entry,
     )
+    old_moisture_entity = registry.async_get_or_create(
+        domain=Platform.SENSOR,
+        platform=DOMAIN,
+        unique_id=f"{ADDRESS}-bottom_moisture",
+        config_entry=mock_config_entry,
+    )
+    old_fault_entity = registry.async_get_or_create(
+        domain=Platform.BINARY_SENSOR,
+        platform=DOMAIN,
+        unique_id=f"{ADDRESS}-battery_low",
+        config_entry=mock_config_entry,
+    )
+    retained_entity = registry.async_get_or_create(
+        domain=Platform.SENSOR,
+        platform=DOMAIN,
+        unique_id=f"{ADDRESS}-air_temperature",
+        config_entry=mock_config_entry,
+    )
 
     assert await async_migrate_entry(hass, mock_config_entry)
-    assert mock_config_entry.version == 2
+    assert mock_config_entry.version == 3
     assert dict(mock_config_entry.data) == {CONF_ADDRESS: ADDRESS}
-    assert registry.async_get(old_entity.entity_id) is None
+    assert registry.async_get(old_range_entity.entity_id) is None
+    assert registry.async_get(old_moisture_entity.entity_id) is None
+    assert registry.async_get(old_fault_entity.entity_id) is None
+    assert registry.async_get(retained_entity.entity_id) is not None

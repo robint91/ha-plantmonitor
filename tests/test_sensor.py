@@ -10,9 +10,9 @@ pytest.importorskip("homeassistant")
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import (
     ATTR_UNIT_OF_MEASUREMENT,
+    LIGHT_LUX,
     PERCENTAGE,
     EntityCategory,
-    UnitOfElectricPotential,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
@@ -28,6 +28,18 @@ from custom_components.plant_monitor_ble.sensor import (
 )
 
 from .conftest import ADDRESS, FRAME
+
+TSC_KEYS = (
+    "bottom_tsc_1nf",
+    "bottom_tsc_11nf",
+    "bottom_tsc_48nf",
+    "middle_tsc_1nf",
+    "middle_tsc_11nf",
+    "middle_tsc_48nf",
+    "top_tsc_1nf",
+    "top_tsc_11nf",
+    "top_tsc_48nf",
+)
 
 
 async def _setup_with_update(
@@ -55,9 +67,14 @@ async def test_all_entities_and_device_registry(
     entries = er.async_entries_for_config_entry(
         entity_registry, mock_config_entry.entry_id
     )
-    assert len(entries) == 25
-    assert sum(entry.disabled_by is None for entry in entries) == 9
-    assert sum(entry.disabled_by is not None for entry in entries) == 16
+    assert len(entries) == 15
+    assert sum(entry.disabled_by is None for entry in entries) == 3
+    assert sum(entry.disabled_by is not None for entry in entries) == 12
+    unique_ids = {entry.unique_id for entry in entries}
+    for key in TSC_KEYS:
+        assert f"{ADDRESS}-{key}" in unique_ids
+    assert not any("moisture" in unique_id for unique_id in unique_ids)
+    assert not any("battery" in unique_id for unique_id in unique_ids)
 
     device_registry = dr.async_get(hass)
     device = device_registry.async_get_device(
@@ -69,12 +86,6 @@ async def test_all_entities_and_device_registry(
 
 def test_sensor_description_metadata() -> None:
     descriptions = {description.key: description for description in SENSOR_DESCRIPTIONS}
-    for key in ("bottom_moisture", "middle_moisture", "top_moisture"):
-        description = descriptions[key]
-        assert description.device_class is SensorDeviceClass.MOISTURE
-        assert description.native_unit_of_measurement == PERCENTAGE
-        assert description.state_class is SensorStateClass.MEASUREMENT
-        assert description.suggested_display_precision == 2
     temperature = descriptions["air_temperature"]
     assert temperature.device_class is SensorDeviceClass.TEMPERATURE
     assert temperature.native_unit_of_measurement is UnitOfTemperature.CELSIUS
@@ -83,38 +94,31 @@ def test_sensor_description_metadata() -> None:
     assert humidity.device_class is SensorDeviceClass.HUMIDITY
     assert humidity.native_unit_of_measurement == PERCENTAGE
     assert humidity.suggested_display_precision == 2
-    battery = descriptions["battery_voltage"]
-    assert battery.device_class is SensorDeviceClass.VOLTAGE
-    assert battery.native_unit_of_measurement is UnitOfElectricPotential.MILLIVOLT
-    assert battery.entity_category is EntityCategory.DIAGNOSTIC
-    assert battery.entity_registry_enabled_default is True
-    for description in SENSOR_DESCRIPTIONS[6:]:
+    illuminance = descriptions["illuminance"]
+    assert illuminance.device_class is SensorDeviceClass.ILLUMINANCE
+    assert illuminance.native_unit_of_measurement == LIGHT_LUX
+    assert illuminance.suggested_display_precision == 2
+    for key in TSC_KEYS:
+        description = descriptions[key]
+        assert description.state_class is SensorStateClass.MEASUREMENT
         assert description.entity_category is EntityCategory.DIAGNOSTIC
         assert description.entity_registry_enabled_default is False
 
 
 def test_sensor_values_and_unknown_sentinels() -> None:
     changed = bytearray(FRAME)
-    for offset in (6, 8, 10, 12, 14, 16, 18, 22):
-        changed[offset : offset + 2] = b"\xff\xff"
+    changed[2:20] = b"\xff" * 18
     changed[20:22] = b"\x00\x80"
+    changed[22:24] = b"\xff\xff"
+    changed[24:27] = b"\xff\xff\xff"
     update = parse_frame(bytes(changed), address=ADDRESS)
     assert update is not None
     data = sensor_update_to_bluetooth_data_update(update)
     values = {key.key: value for key, value in data.entity_data.items()}
-    for key in (
-        "bottom_moisture",
-        "middle_moisture",
-        "top_moisture",
-        "air_temperature",
-        "relative_humidity",
-        "battery_voltage",
-        "bottom_filtered_count",
-        "middle_filtered_count",
-        "top_filtered_count",
-    ):
+    for key in (*TSC_KEYS, "air_temperature", "relative_humidity", "illuminance"):
         assert values[key] is None
-    assert values["bottom_moisture"] != 0
+    assert not any("moisture" in key for key in values)
+    assert not any("battery" in key for key in values)
 
 
 async def test_native_units_and_stale_availability(
@@ -123,22 +127,16 @@ async def test_native_units_and_stale_availability(
     await _setup_with_update(hass, mock_config_entry)
     registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(registry, mock_config_entry.entry_id)
-    by_key = {entry.unique_id.rsplit("-", 1)[-1]: entry for entry in entries}
-
-    moisture = hass.states.get(by_key["bottom_moisture"].entity_id)
-    assert moisture is not None
-    assert moisture.state == "12.34"
-    assert moisture.attributes[ATTR_UNIT_OF_MEASUREMENT] == "%"
-    assert moisture.attributes["device_class"] == SensorDeviceClass.MOISTURE
-    assert moisture.attributes["state_class"] == SensorStateClass.MEASUREMENT
-    assert moisture.state != "unavailable"
+    by_key = {entry.unique_id.removeprefix(f"{ADDRESS}-"): entry for entry in entries}
 
     temperature = hass.states.get(by_key["air_temperature"].entity_id)
     assert temperature is not None
+    assert temperature.state == "23.45"
     assert temperature.attributes[ATTR_UNIT_OF_MEASUREMENT] == "°C"
-    battery = hass.states.get(by_key["battery_voltage"].entity_id)
-    assert battery is not None
-    assert battery.attributes[ATTR_UNIT_OF_MEASUREMENT] == "mV"
+    illuminance = hass.states.get(by_key["illuminance"].entity_id)
+    assert illuminance is not None
+    assert illuminance.state == "123.45"
+    assert illuminance.attributes[ATTR_UNIT_OF_MEASUREMENT] == "lx"
 
     with patch(
         "custom_components.plant_monitor_ble.coordinator.async_call_later",
@@ -153,6 +151,6 @@ async def test_native_units_and_stale_availability(
         stale_callback = schedule_stale.call_args.args[2]
         stale_callback(datetime.now(timezone.utc))
         await hass.async_block_till_done()
-    moisture = hass.states.get(by_key["bottom_moisture"].entity_id)
-    assert moisture is not None
-    assert moisture.state == "unavailable"
+    temperature = hass.states.get(by_key["air_temperature"].entity_id)
+    assert temperature is not None
+    assert temperature.state == "unavailable"
