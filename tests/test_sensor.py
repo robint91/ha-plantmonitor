@@ -27,7 +27,7 @@ from custom_components.plant_monitor_ble.sensor import (
     sensor_update_to_bluetooth_data_update,
 )
 
-from .conftest import ADDRESS, FRAME
+from .conftest import ADDRESS, CALIBRATION, FRAME
 
 TSC_KEYS = (
     "bottom_tsc_1nf",
@@ -40,6 +40,8 @@ TSC_KEYS = (
     "top_tsc_11nf",
     "top_tsc_48nf",
 )
+RAW_COUNT_KEYS = ("bottom_tsc_count", "middle_tsc_count", "top_tsc_count")
+MOISTURE_KEYS = ("bottom_moisture", "middle_moisture", "top_moisture")
 
 
 async def _setup_with_update(
@@ -67,13 +69,12 @@ async def test_all_entities_and_device_registry(
     entries = er.async_entries_for_config_entry(
         entity_registry, mock_config_entry.entry_id
     )
-    assert len(entries) == 15
-    assert sum(entry.disabled_by is None for entry in entries) == 3
+    assert len(entries) == 21
+    assert sum(entry.disabled_by is None for entry in entries) == 9
     assert sum(entry.disabled_by is not None for entry in entries) == 12
     unique_ids = {entry.unique_id for entry in entries}
-    for key in TSC_KEYS:
+    for key in (*TSC_KEYS, *RAW_COUNT_KEYS, *MOISTURE_KEYS):
         assert f"{ADDRESS}-{key}" in unique_ids
-    assert not any("moisture" in unique_id for unique_id in unique_ids)
     assert not any("battery" in unique_id for unique_id in unique_ids)
 
     device_registry = dr.async_get(hass)
@@ -103,6 +104,17 @@ def test_sensor_description_metadata() -> None:
         assert description.state_class is SensorStateClass.MEASUREMENT
         assert description.entity_category is EntityCategory.DIAGNOSTIC
         assert description.entity_registry_enabled_default is False
+    for key in RAW_COUNT_KEYS:
+        description = descriptions[key]
+        assert description.state_class is SensorStateClass.MEASUREMENT
+        assert description.entity_category is EntityCategory.DIAGNOSTIC
+        assert description.entity_registry_enabled_default is True
+    for key in MOISTURE_KEYS:
+        description = descriptions[key]
+        assert description.device_class is SensorDeviceClass.MOISTURE
+        assert description.native_unit_of_measurement == PERCENTAGE
+        assert description.state_class is SensorStateClass.MEASUREMENT
+        assert description.entity_registry_enabled_default is True
 
 
 def test_sensor_values_and_unknown_sentinels() -> None:
@@ -113,17 +125,49 @@ def test_sensor_values_and_unknown_sentinels() -> None:
     changed[24:27] = b"\xff\xff\xff"
     update = parse_frame(bytes(changed), address=ADDRESS)
     assert update is not None
+    data = sensor_update_to_bluetooth_data_update(update, CALIBRATION)
+    values = {key.key: value for key, value in data.entity_data.items()}
+    for key in (
+        *TSC_KEYS,
+        *RAW_COUNT_KEYS,
+        *MOISTURE_KEYS,
+        "air_temperature",
+        "relative_humidity",
+        "illuminance",
+    ):
+        assert values[key] is None
+    assert not any("battery" in key for key in values)
+
+
+def test_zone_moisture_uses_fixed_11nf_counts_independently() -> None:
+    update = parse_frame(FRAME, address=ADDRESS)
+    assert update is not None
+    data = sensor_update_to_bluetooth_data_update(update, CALIBRATION)
+    values = {key.key: value for key, value in data.entity_data.items()}
+
+    assert values["bottom_tsc_count"] == 1100
+    assert values["middle_tsc_count"] == 2100
+    assert values["top_tsc_count"] == 3100
+    assert values["bottom_moisture"] == pytest.approx(81.8181818)
+    assert values["middle_moisture"] == pytest.approx(42.8571429)
+    assert values["top_moisture"] == pytest.approx(29.0322581)
+    assert values["bottom_tsc_1nf"] == 1000
+    assert values["bottom_tsc_11nf"] == 1100
+    assert values["bottom_tsc_48nf"] == 1200
+
+
+def test_missing_calibration_makes_moisture_unavailable() -> None:
+    update = parse_frame(FRAME, address=ADDRESS)
+    assert update is not None
     data = sensor_update_to_bluetooth_data_update(update)
     values = {key.key: value for key, value in data.entity_data.items()}
-    for key in (*TSC_KEYS, "air_temperature", "relative_humidity", "illuminance"):
-        assert values[key] is None
-    assert not any("moisture" in key for key in values)
-    assert not any("battery" in key for key in values)
+    assert all(values[key] is None for key in MOISTURE_KEYS)
 
 
 async def test_native_units_and_stale_availability(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry, service_info_factory
 ) -> None:
+    hass.config_entries.async_update_entry(mock_config_entry, options=CALIBRATION)
     await _setup_with_update(hass, mock_config_entry)
     registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(registry, mock_config_entry.entry_id)
@@ -137,6 +181,13 @@ async def test_native_units_and_stale_availability(
     assert illuminance is not None
     assert illuminance.state == "123.45"
     assert illuminance.attributes[ATTR_UNIT_OF_MEASUREMENT] == "lx"
+    bottom_raw = hass.states.get(by_key["bottom_tsc_count"].entity_id)
+    assert bottom_raw is not None
+    assert bottom_raw.state == "1100"
+    bottom_moisture = hass.states.get(by_key["bottom_moisture"].entity_id)
+    assert bottom_moisture is not None
+    assert float(bottom_moisture.state) == pytest.approx(81.8181818)
+    assert bottom_moisture.attributes[ATTR_UNIT_OF_MEASUREMENT] == PERCENTAGE
 
     with patch(
         "custom_components.plant_monitor_ble.coordinator.async_call_later",

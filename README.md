@@ -43,13 +43,17 @@ Enabled by default from the custom protocol:
 - Air temperature
 - Relative humidity
 - Illuminance
+- Bottom, middle, and top raw TSC count from the fixed 11 nF measurement
+- Bottom, middle, and top calibrated soil moisture
 
 Disabled by default diagnostics:
 
 - Bottom, middle, and top TSC counts at 1 nF, 11 nF, and 48 nF (nine entities)
 - Packet ID, RSSI, and last received timestamp
 
-The stable TSC entity keys include both zone and capacitor range:
+The generic fixed-measurement raw entity keys are `bottom_tsc_count`,
+`middle_tsc_count`, and `top_tsc_count`. The stable diagnostic TSC entity keys
+include both zone and capacitor range:
 `bottom_tsc_1nf`, `bottom_tsc_11nf`, `bottom_tsc_48nf`,
 `middle_tsc_1nf`, `middle_tsc_11nf`, `middle_tsc_48nf`, `top_tsc_1nf`,
 `top_tsc_11nf`, and `top_tsc_48nf`.
@@ -66,14 +70,31 @@ Protocol v2 moves soil calibration entirely out of firmware. The custom packet
 contains raw TSC counts and never contains firmware-calibrated moisture,
 calibration constants, or a calibration revision.
 
-All nine raw TSC measurements remain available as diagnostic sensors so they
-can be used as Home Assistant calibration inputs. The protocol does not define
-how the three capacitor ranges should be selected or combined. Until that
-strategy is specified, this integration deliberately does not derive soil
-moisture percentages or request dry/wet calibration values. The future
-calibration strategy is therefore isolated from packet decoding: it must
-consume the sentinel-aware raw TSC sensor values and must not depend on a
-firmware moisture value.
+The firmware's TSC sampling-capacitor/gain configuration is fixed at 11 nF.
+There is no auto-ranging or range correction. The three generic raw-count
+entities and the calibration calculation therefore use the 11 nF reading for
+their zone. All nine range-specific raw TSC measurements remain available as
+diagnostic sensors and are never replaced or averaged.
+
+Open the integration's **Configure** dialog and enter an independently measured
+`dry_count` and `wet_count` for bottom, middle, and top. Each wet count must be
+lower than its dry count. Until a complete valid calibration is saved, the
+corresponding moisture entity is unavailable; a raw count invalid sentinel also
+makes only that zone's moisture unavailable.
+
+The charge-transfer count is inversely proportional to electrode capacitance,
+so calibration interpolates the reciprocal count rather than the count itself:
+
+```text
+moisture =
+    100 * wet_count * (dry_count - count)
+    / (count * (dry_count - wet_count))
+```
+
+The result is clamped to 0–100%. A count at or above the dry point is 0%; a
+count at or below the wet point is 100%. Zero counts and calibrations where
+`dry_count <= wet_count` are invalid. Each zone is converted independently.
+The integration does not publish an overall/averaged moisture entity.
 
 ## Custom protocol v2
 

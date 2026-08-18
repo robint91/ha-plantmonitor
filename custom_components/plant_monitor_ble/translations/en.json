@@ -21,11 +21,36 @@
       "not_supported": "The Bluetooth advertisement is not a supported Plant Monitor BLE protocol frame."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Soil-moisture calibration",
+        "description": "Enter dry and wet counts for each zone. Calibration uses the firmware's fixed 11 nF TSC reading. Wet counts must be lower than dry counts.",
+        "data": {
+          "bottom_dry_count": "Bottom dry count",
+          "bottom_wet_count": "Bottom wet count",
+          "middle_dry_count": "Middle dry count",
+          "middle_wet_count": "Middle wet count",
+          "top_dry_count": "Top dry count",
+          "top_wet_count": "Top wet count"
+        }
+      }
+    },
+    "error": {
+      "invalid_calibration": "Each dry count must be greater than its corresponding wet count. Counts must be between 1 and 65534."
+    }
+  },
   "entity": {
     "sensor": {
       "air_temperature": {"name": "Air temperature"},
       "relative_humidity": {"name": "Relative humidity"},
       "illuminance": {"name": "Illuminance"},
+      "bottom_tsc_count": {"name": "Bottom TSC count"},
+      "middle_tsc_count": {"name": "Middle TSC count"},
+      "top_tsc_count": {"name": "Top TSC count"},
+      "bottom_moisture": {"name": "Bottom moisture"},
+      "middle_moisture": {"name": "Middle moisture"},
+      "top_moisture": {"name": "Top moisture"},
       "bottom_tsc_1nf": {"name": "Bottom TSC 1 nF"},
       "bottom_tsc_11nf": {"name": "Bottom TSC 11 nF"},
       "bottom_tsc_48nf": {"name": "Bottom TSC 48 nF"},

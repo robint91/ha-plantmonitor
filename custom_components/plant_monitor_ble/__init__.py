@@ -35,8 +35,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if registry_entry.unique_id in removed_unique_ids:
                 registry.async_remove(registry_entry.entity_id)
 
-    # Released entries contain only the Bluetooth address. Protocol v2 has no
-    # firmware calibration data to transform into an HA-side strategy.
+    # Released entries contain only the Bluetooth address. HA-side calibration
+    # is stored separately in config-entry options and needs no data migration.
     hass.config_entries.async_update_entry(entry, version=CONFIG_ENTRY_VERSION)
     return True
 

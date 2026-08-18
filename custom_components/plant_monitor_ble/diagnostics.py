@@ -43,6 +43,7 @@ async def async_get_config_entry_diagnostics(
     return {
         "integration_version": INTEGRATION_VERSION,
         "entry_data": async_redact_data(dict(entry.data), _TO_REDACT),
+        "soil_calibration": dict(entry.options),
         "expected_update_interval_seconds": (
             entry.runtime_data.expected_update_interval_seconds
         ),

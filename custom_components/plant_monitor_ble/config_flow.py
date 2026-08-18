@@ -1,5 +1,7 @@
 """Config flow for Plant Monitor BLE."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, override
 
@@ -8,11 +10,51 @@ from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_discovered_service_info,
 )
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlowWithReload,
+)
 from homeassistant.const import CONF_ADDRESS
+from homeassistant.core import callback
 
-from .const import CONFIG_ENTRY_VERSION, DOMAIN, NAME
+from .const import (
+    CALIBRATION_FIELDS,
+    CONF_BOTTOM_DRY_COUNT,
+    CONF_BOTTOM_WET_COUNT,
+    CONF_MIDDLE_DRY_COUNT,
+    CONF_MIDDLE_WET_COUNT,
+    CONF_TOP_DRY_COUNT,
+    CONF_TOP_WET_COUNT,
+    CONFIG_ENTRY_VERSION,
+    DOMAIN,
+    NAME,
+)
 from .parser import parse_manufacturer_data
+
+_CALIBRATION_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_BOTTOM_DRY_COUNT): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=0xFFFE)
+        ),
+        vol.Required(CONF_BOTTOM_WET_COUNT): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=0xFFFE)
+        ),
+        vol.Required(CONF_MIDDLE_DRY_COUNT): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=0xFFFE)
+        ),
+        vol.Required(CONF_MIDDLE_WET_COUNT): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=0xFFFE)
+        ),
+        vol.Required(CONF_TOP_DRY_COUNT): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=0xFFFE)
+        ),
+        vol.Required(CONF_TOP_WET_COUNT): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=0xFFFE)
+        ),
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +90,13 @@ class PlantMonitorConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._discovery_info: BluetoothServiceInfoBleak | None = None
         self._discovered_devices: dict[str, Discovery] = {}
+
+    @staticmethod
+    @callback
+    @override
+    def async_get_options_flow(_config_entry: ConfigEntry) -> PlantMonitorOptionsFlow:
+        """Create the soil-calibration options flow."""
+        return PlantMonitorOptionsFlow()
 
     @override
     async def async_step_bluetooth(
@@ -113,4 +162,30 @@ class PlantMonitorConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({vol.Required(CONF_ADDRESS): vol.In(titles)}),
+        )
+
+
+class PlantMonitorOptionsFlow(OptionsFlowWithReload):
+    """Handle per-zone soil-calibration options."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Configure fixed-range dry and wet TSC counts."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if all(
+                user_input[dry_key] > user_input[wet_key]
+                for _, dry_key, wet_key in CALIBRATION_FIELDS
+            ):
+                return self.async_create_entry(data=user_input)
+            errors["base"] = "invalid_calibration"
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(
+                _CALIBRATION_SCHEMA,
+                user_input if user_input is not None else self.config_entry.options,
+            ),
+            errors=errors,
         )

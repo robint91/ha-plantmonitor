@@ -14,7 +14,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.plant_monitor_ble.const import DOMAIN
 
-from .conftest import ADDRESS, FRAME
+from .conftest import ADDRESS, CALIBRATION, FRAME
 
 
 async def test_valid_bluetooth_discovery_and_confirmation(
@@ -119,3 +119,29 @@ async def test_no_compatible_devices_found(hass: HomeAssistant) -> None:
         )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "no_devices_found"
+
+
+async def test_calibration_options_flow(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], CALIBRATION
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == CALIBRATION
+
+
+async def test_calibration_options_reject_reversed_points(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    invalid = {**CALIBRATION, "bottom_dry_count": 1000}
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], invalid
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_calibration"}
