@@ -34,7 +34,7 @@ async def test_valid_bluetooth_discovery_and_confirmation(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {CONF_ADDRESS: ADDRESS}
     assert result["result"].unique_id == ADDRESS
-    assert result["result"].version == 3
+    assert result["result"].version == 4
 
 
 async def test_user_discovery_selection(

@@ -4,13 +4,11 @@ from datetime import timedelta
 
 DOMAIN = "plant_monitor_ble"
 NAME = "Plant Monitor BLE"
-INTEGRATION_VERSION = "2.1.0"
-CONFIG_ENTRY_VERSION = 3
+INTEGRATION_VERSION = "3.0.0"
+CONFIG_ENTRY_VERSION = 4
 
-# The firmware uses one fixed TSC sampling-capacitor/gain configuration for
-# moisture conversion. Protocol v2 also reports the other diagnostic readings,
-# but calibration deliberately consumes only the fixed 11 nF reading.
-FIXED_TSC_CAPACITANCE_NF = 11
+# Protocol v3 uses one fixed TSC sampling capacitor for every zone.
+FIXED_TSC_CAPACITANCE_NF = 100
 
 CONF_BOTTOM_DRY_COUNT = "bottom_dry_count"
 CONF_BOTTOM_WET_COUNT = "bottom_wet_count"
@@ -28,17 +26,17 @@ CALIBRATION_FIELDS = (
 # Development-only Bluetooth SIG Company Identifier. When a production identifier
 # is assigned, update this value, manifest.json's manufacturer_id, and test vectors.
 COMPANY_ID = 0xFFFF
-PROTOCOL_VERSION = 2
-FRAME_LENGTH = 27
+PROTOCOL_VERSION = 3
+FRAME_LENGTH = 15
 DEDUPLICATION_WINDOW = timedelta(seconds=60)
 
 EXPECTED_UPDATE_INTERVAL = timedelta(seconds=30)
 # Allow three expected reports to be missed before marking entities unavailable.
 STALE_TIMEOUT = timedelta(seconds=90)
 
-# Entity keys removed across the v1.1 and protocol-v2 migrations. The three
-# moisture keys are retained: their entity identities now represent HA-side
-# calibrated moisture instead of firmware-calculated moisture.
+# Entity keys removed across earlier protocol migrations. The three moisture
+# keys are retained: they represent optional HA-side calibrated moisture rather
+# than values carried by the custom packet.
 REMOVED_ENTITY_KEYS = frozenset(
     {
         "battery_low",
@@ -48,6 +46,9 @@ REMOVED_ENTITY_KEYS = frozenset(
         "bottom_filtered_count",
         "bottom_range",
         "bottom_saturation",
+        "bottom_tsc_1nf",
+        "bottom_tsc_11nf",
+        "bottom_tsc_48nf",
         "calibration_invalid",
         "calibration_revision",
         "environmental_sensor_fault",
@@ -55,11 +56,17 @@ REMOVED_ENTITY_KEYS = frozenset(
         "middle_filtered_count",
         "middle_range",
         "middle_saturation",
+        "middle_tsc_1nf",
+        "middle_tsc_11nf",
+        "middle_tsc_48nf",
         "oscillator_configuration_fault",
         "status_word",
         "top_filtered_count",
         "top_range",
         "top_saturation",
+        "top_tsc_1nf",
+        "top_tsc_11nf",
+        "top_tsc_48nf",
         "tsc_acquisition_fault",
     }
 )

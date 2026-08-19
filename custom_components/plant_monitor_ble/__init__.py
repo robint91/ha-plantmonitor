@@ -15,7 +15,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Migrate entries from the autoscaling-era entity model."""
+    """Migrate entries from earlier protocol entity models."""
     from homeassistant.helpers import entity_registry as er
 
     from .const import CONFIG_ENTRY_VERSION, REMOVED_ENTITY_KEYS

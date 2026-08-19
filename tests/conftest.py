@@ -25,8 +25,9 @@ CALIBRATION = {
     "top_dry_count": 4000,
     "top_wet_count": 2000,
 }
-FRAME = bytes.fromhex(
-    "02 2A E8 03 4C 04 B0 04 D0 07 34 08 98 08 B8 0B 1C 0C 80 0C 29 09 2E 16 39 30 00"
+FRAME = bytes.fromhex("03 2A E8 03 D0 07 B8 0B 29 09 2E 16 39 30 00")
+MANUFACTURER_AD = bytes.fromhex(
+    "12 FF FF FF 03 2A E8 03 D0 07 B8 0B 29 09 2E 16 39 30 00"
 )
 
 

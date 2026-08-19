@@ -40,18 +40,18 @@ async def test_setup_and_unload(
 
 async def test_manifest_loads(hass: HomeAssistant) -> None:
     integration = await loader.async_get_integration(hass, DOMAIN)
-    assert integration.manifest["version"] == "2.1.0"
+    assert integration.manifest["version"] == "3.0.0"
     assert integration.manifest["iot_class"] == "local_push"
     assert integration.manifest["bluetooth"] == [
         {
             "connectable": False,
             "manufacturer_id": 65535,
-            "manufacturer_data_start": [2],
+            "manufacturer_data_start": [3],
         }
     ]
 
 
-async def test_migrate_removes_obsolete_protocol_v1_entities(
+async def test_migrate_removes_obsolete_protocol_entities(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry
 ) -> None:
     registry = er.async_get(hass)
@@ -59,6 +59,12 @@ async def test_migrate_removes_obsolete_protocol_v1_entities(
         domain=Platform.SENSOR,
         platform=DOMAIN,
         unique_id=f"{ADDRESS}-bottom_range",
+        config_entry=mock_config_entry,
+    )
+    old_capacitor_entity = registry.async_get_or_create(
+        domain=Platform.SENSOR,
+        platform=DOMAIN,
+        unique_id=f"{ADDRESS}-bottom_tsc_11nf",
         config_entry=mock_config_entry,
     )
     old_moisture_entity = registry.async_get_or_create(
@@ -81,9 +87,10 @@ async def test_migrate_removes_obsolete_protocol_v1_entities(
     )
 
     assert await async_migrate_entry(hass, mock_config_entry)
-    assert mock_config_entry.version == 3
+    assert mock_config_entry.version == 4
     assert dict(mock_config_entry.data) == {CONF_ADDRESS: ADDRESS}
     assert registry.async_get(old_range_entity.entity_id) is None
+    assert registry.async_get(old_capacitor_entity.entity_id) is None
     assert registry.async_get(old_moisture_entity.entity_id) is not None
     assert registry.async_get(old_fault_entity.entity_id) is None
     assert registry.async_get(retained_entity.entity_id) is not None

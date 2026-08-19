@@ -14,7 +14,7 @@ from .const import (
 )
 from .types import PlantMonitorAdvertisement
 
-_FRAME: Final = struct.Struct("<BB9HhH")
+_FRAME: Final = struct.Struct("<BB3HhH")
 _INVALID_UNSIGNED: Final = 0xFFFF
 _INVALID_ILLUMINANCE: Final = 0xFFFFFF
 _INVALID_TEMPERATURE: Final = -32768
@@ -37,25 +37,19 @@ def parse_frame(
     received_at: datetime | None = None,
 ) -> PlantMonitorAdvertisement | None:
     """Decode a protocol frame, returning None when it is not compatible."""
-    if len(frame) < FRAME_LENGTH:
+    if len(frame) != FRAME_LENGTH:
         return None
 
     (
         version,
         packet_id,
-        bottom_tsc_1nf,
-        bottom_tsc_11nf,
-        bottom_tsc_48nf,
-        middle_tsc_1nf,
-        middle_tsc_11nf,
-        middle_tsc_48nf,
-        top_tsc_1nf,
-        top_tsc_11nf,
-        top_tsc_48nf,
+        bottom_tsc,
+        middle_tsc,
+        top_tsc,
         temperature,
         humidity,
     ) = _FRAME.unpack_from(frame)
-    illuminance = int.from_bytes(frame[24:27], "little")
+    illuminance = int.from_bytes(frame[12:15], "little")
 
     if version != PROTOCOL_VERSION:
         return None
@@ -68,24 +62,12 @@ def parse_frame(
         received_at=received_at or datetime.now(timezone.utc),
         version=version,
         packet_id=packet_id,
-        bottom_tsc_1nf_raw=bottom_tsc_1nf,
-        bottom_tsc_11nf_raw=bottom_tsc_11nf,
-        bottom_tsc_48nf_raw=bottom_tsc_48nf,
-        middle_tsc_1nf_raw=middle_tsc_1nf,
-        middle_tsc_11nf_raw=middle_tsc_11nf,
-        middle_tsc_48nf_raw=middle_tsc_48nf,
-        top_tsc_1nf_raw=top_tsc_1nf,
-        top_tsc_11nf_raw=top_tsc_11nf,
-        top_tsc_48nf_raw=top_tsc_48nf,
-        bottom_tsc_1nf=_optional_unsigned(bottom_tsc_1nf),
-        bottom_tsc_11nf=_optional_unsigned(bottom_tsc_11nf),
-        bottom_tsc_48nf=_optional_unsigned(bottom_tsc_48nf),
-        middle_tsc_1nf=_optional_unsigned(middle_tsc_1nf),
-        middle_tsc_11nf=_optional_unsigned(middle_tsc_11nf),
-        middle_tsc_48nf=_optional_unsigned(middle_tsc_48nf),
-        top_tsc_1nf=_optional_unsigned(top_tsc_1nf),
-        top_tsc_11nf=_optional_unsigned(top_tsc_11nf),
-        top_tsc_48nf=_optional_unsigned(top_tsc_48nf),
+        bottom_tsc_raw=bottom_tsc,
+        middle_tsc_raw=middle_tsc,
+        top_tsc_raw=top_tsc,
+        bottom_tsc=_optional_unsigned(bottom_tsc),
+        middle_tsc=_optional_unsigned(middle_tsc),
+        top_tsc=_optional_unsigned(top_tsc),
         temperature_raw=temperature,
         temperature_c=(
             None if temperature == _INVALID_TEMPERATURE else temperature / 100

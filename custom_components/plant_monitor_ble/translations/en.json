@@ -4,7 +4,7 @@
     "step": {
       "bluetooth_confirm": {
         "title": "Add {name}",
-        "description": "Set up this passively discovered Plant Monitor BLE device? Protocol v2 reports all three soil-sensing capacitor ranges for each zone every 30 seconds."
+        "description": "Set up this passively discovered Plant Monitor BLE device? Protocol v3 reports one raw 100 nF TSC reading for each zone every 30 seconds."
       },
       "user": {
         "title": "Select a plant monitor",
@@ -25,7 +25,7 @@
     "step": {
       "init": {
         "title": "Soil-moisture calibration",
-        "description": "Enter dry and wet counts for each zone. Calibration uses the firmware's fixed 11 nF TSC reading. Wet counts must be lower than dry counts.",
+        "description": "Enter dry and wet counts for each zone. Calibration uses the firmware's fixed 100 nF TSC reading. Wet counts must be lower than dry counts.",
         "data": {
           "bottom_dry_count": "Bottom dry count",
           "bottom_wet_count": "Bottom wet count",
@@ -45,21 +45,12 @@
       "air_temperature": {"name": "Air temperature"},
       "relative_humidity": {"name": "Relative humidity"},
       "illuminance": {"name": "Illuminance"},
-      "bottom_tsc_count": {"name": "Bottom TSC count"},
-      "middle_tsc_count": {"name": "Middle TSC count"},
-      "top_tsc_count": {"name": "Top TSC count"},
+      "bottom_tsc_count": {"name": "Bottom raw TSC"},
+      "middle_tsc_count": {"name": "Middle raw TSC"},
+      "top_tsc_count": {"name": "Top raw TSC"},
       "bottom_moisture": {"name": "Bottom moisture"},
       "middle_moisture": {"name": "Middle moisture"},
       "top_moisture": {"name": "Top moisture"},
-      "bottom_tsc_1nf": {"name": "Bottom TSC 1 nF"},
-      "bottom_tsc_11nf": {"name": "Bottom TSC 11 nF"},
-      "bottom_tsc_48nf": {"name": "Bottom TSC 48 nF"},
-      "middle_tsc_1nf": {"name": "Middle TSC 1 nF"},
-      "middle_tsc_11nf": {"name": "Middle TSC 11 nF"},
-      "middle_tsc_48nf": {"name": "Middle TSC 48 nF"},
-      "top_tsc_1nf": {"name": "Top TSC 1 nF"},
-      "top_tsc_11nf": {"name": "Top TSC 11 nF"},
-      "top_tsc_48nf": {"name": "Top TSC 48 nF"},
       "packet_id": {"name": "Packet ID"},
       "rssi": {"name": "Signal strength"},
       "last_received": {"name": "Last received"}

@@ -1,4 +1,4 @@
-"""Tests for the pure Plant Monitor protocol-v2 parser."""
+"""Tests for the pure Plant Monitor protocol-v3 parser."""
 
 import struct
 from dataclasses import FrozenInstanceError
@@ -13,7 +13,7 @@ from custom_components.plant_monitor_ble.parser import (
     parse_manufacturer_data,
 )
 
-from .conftest import ADDRESS, FRAME
+from .conftest import ADDRESS, FRAME, MANUFACTURER_AD
 
 
 def _replace_u16(frame: bytes, offset: int, value: int) -> bytes:
@@ -23,26 +23,17 @@ def _replace_u16(frame: bytes, offset: int, value: int) -> bytes:
 
 
 def test_exact_firmware_vector() -> None:
+    assert len(FRAME) == 15
+    assert len(MANUFACTURER_AD) == 19
+    assert MANUFACTURER_AD == b"\x12\xff\xff\xff" + FRAME
     received_at = datetime(2026, 1, 2, 3, 4, tzinfo=timezone.utc)
     result = parse_frame(FRAME, address=ADDRESS, rssi=-67, received_at=received_at)
     assert result is not None
-    assert result.version == 2
+    assert result.version == 3
     assert result.packet_id == 42
-    assert (
-        result.bottom_tsc_1nf,
-        result.bottom_tsc_11nf,
-        result.bottom_tsc_48nf,
-    ) == (1000, 1100, 1200)
-    assert (
-        result.middle_tsc_1nf,
-        result.middle_tsc_11nf,
-        result.middle_tsc_48nf,
-    ) == (2000, 2100, 2200)
-    assert (
-        result.top_tsc_1nf,
-        result.top_tsc_11nf,
-        result.top_tsc_48nf,
-    ) == (3000, 3100, 3200)
+    assert result.bottom_tsc == 1000
+    assert result.middle_tsc == 2000
+    assert result.top_tsc == 3000
     assert result.temperature_c == 23.45
     assert result.humidity == 56.78
     assert result.illuminance_lux == 123.45
@@ -55,39 +46,29 @@ def test_exact_firmware_vector() -> None:
 
 def test_signed_negative_temperature() -> None:
     changed = bytearray(FRAME)
-    struct.pack_into("<h", changed, 20, -1234)
+    struct.pack_into("<h", changed, 8, -1234)
     result = parse_frame(bytes(changed), address=ADDRESS)
     assert result is not None
     assert result.temperature_raw == -1234
     assert result.temperature_c == -12.34
 
 
-@pytest.mark.parametrize("offset", range(2, 20, 2))
-def test_tsc_invalid_sentinels_preserve_raw_value(offset: int) -> None:
+@pytest.mark.parametrize(
+    ("offset", "field"),
+    [(2, "bottom_tsc"), (4, "middle_tsc"), (6, "top_tsc")],
+)
+def test_tsc_invalid_sentinels_preserve_raw_value(offset: int, field: str) -> None:
     result = parse_frame(_replace_u16(FRAME, offset, 0xFFFF), address=ADDRESS)
     assert result is not None
-    field_index = (offset - 2) // 2
-    fields = (
-        "bottom_tsc_1nf",
-        "bottom_tsc_11nf",
-        "bottom_tsc_48nf",
-        "middle_tsc_1nf",
-        "middle_tsc_11nf",
-        "middle_tsc_48nf",
-        "top_tsc_1nf",
-        "top_tsc_11nf",
-        "top_tsc_48nf",
-    )
-    field = fields[field_index]
     assert getattr(result, field) is None
     assert getattr(result, f"{field}_raw") == 0xFFFF
 
 
 def test_environmental_invalid_sentinels() -> None:
     changed = bytearray(FRAME)
-    changed[20:22] = b"\x00\x80"
-    changed[22:24] = b"\xff\xff"
-    changed[24:27] = b"\xff\xff\xff"
+    changed[8:10] = b"\x00\x80"
+    changed[10:12] = b"\xff\xff"
+    changed[12:15] = b"\xff\xff\xff"
     result = parse_frame(bytes(changed), address=ADDRESS)
     assert result is not None
     assert result.temperature_c is None
@@ -98,24 +79,22 @@ def test_environmental_invalid_sentinels() -> None:
     assert result.illuminance_raw == 0xFFFFFF
 
 
-@pytest.mark.parametrize("length", [0, 1, 26])
-def test_truncated_packet(length: int) -> None:
+@pytest.mark.parametrize("length", [0, 1, 14])
+def test_incorrect_frame_length(length: int) -> None:
     assert parse_frame(FRAME[:length], address=ADDRESS) is None
 
 
-def test_trailing_bytes_are_ignored() -> None:
-    result = parse_frame(FRAME + b"\xaa", address=ADDRESS)
-    assert result is not None
-    assert result.illuminance_lux == 123.45
+def test_trailing_byte_is_rejected() -> None:
+    assert parse_frame(FRAME + b"\xaa", address=ADDRESS) is None
 
 
-@pytest.mark.parametrize("version", [0, 1, 3, 255])
+@pytest.mark.parametrize("version", [0, 1, 2, 255])
 def test_unsupported_version(version: int) -> None:
     assert parse_frame(bytes([version]) + FRAME[1:], address=ADDRESS) is None
 
 
 def test_out_of_range_humidity() -> None:
-    assert parse_frame(_replace_u16(FRAME, 22, 10001), address=ADDRESS) is None
+    assert parse_frame(_replace_u16(FRAME, 10, 10001), address=ADDRESS) is None
 
 
 def test_manufacturer_data_company_id() -> None:

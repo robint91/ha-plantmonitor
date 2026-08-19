@@ -1,7 +1,7 @@
 # Plant Monitor BLE
 
 A local-push Home Assistant custom integration for a battery-powered,
-three-zone plant monitor. It passively decodes the monitor's protocol-v2
+three-zone plant monitor. It passively decodes the monitor's protocol-v3
 manufacturer-specific Bluetooth advertisement. It never connects to the
 device and performs no polling, writes, GATT operations, or cloud access.
 
@@ -43,47 +43,37 @@ Enabled by default from the custom protocol:
 - Air temperature
 - Relative humidity
 - Illuminance
-- Bottom, middle, and top raw TSC count from the fixed 11 nF measurement
-- Bottom, middle, and top calibrated soil moisture
+- Bottom, middle, and top raw TSC counts from the fixed 100 nF sampling capacitor
+- Bottom, middle, and top optional Home Assistant-calibrated soil moisture
 
-Disabled by default diagnostics:
+The raw TSC entities have stable keys `bottom_tsc_count`, `middle_tsc_count`,
+and `top_tsc_count`. They are unscaled integer counts with no percentage unit
+or soil-moisture device class.
 
-- Bottom, middle, and top TSC counts at 1 nF, 11 nF, and 48 nF (nine entities)
-- Packet ID, RSSI, and last received timestamp
-
-The generic fixed-measurement raw entity keys are `bottom_tsc_count`,
-`middle_tsc_count`, and `top_tsc_count`. The stable diagnostic TSC entity keys
-include both zone and capacitor range:
-`bottom_tsc_1nf`, `bottom_tsc_11nf`, `bottom_tsc_48nf`,
-`middle_tsc_1nf`, `middle_tsc_11nf`, `middle_tsc_48nf`, `top_tsc_1nf`,
-`top_tsc_11nf`, and `top_tsc_48nf`.
+Packet ID, RSSI, and last-received timestamp are disabled by default diagnostic
+entities.
 
 Firmware also broadcasts standard BTHome temperature, relative humidity,
-illuminance, battery percentage, and battery voltage measurements. Battery
-entities are owned by Home Assistant's BTHome integration only; the custom
-packet has no battery fields. BTHome does not publish soil moisture, and this
-integration does not expect or create a BTHome moisture entity.
+illuminance, battery percentage, and battery voltage measurements. BTHome
+advertising is unchanged and remains owned by Home Assistant's BTHome
+integration. The custom protocol-v3 packet has no battery fields and no
+calibrated-moisture fields.
 
-## Soil-moisture calibration
+## Optional soil-moisture calibration
 
-Protocol v2 moves soil calibration entirely out of firmware. The custom packet
-contains raw TSC counts and never contains firmware-calibrated moisture,
-calibration constants, or a calibration revision.
+Protocol v3 carries only one raw 100 nF TSC count for each zone. The integration
+can derive a separate soil-moisture percentage locally when independently
+measured dry and wet counts are configured. This derived value is not decoded
+from the custom packet and does not alter or relabel the raw TSC entities.
 
-The firmware's TSC sampling-capacitor/gain configuration is fixed at 11 nF.
-There is no auto-ranging or range correction. The three generic raw-count
-entities and the calibration calculation therefore use the 11 nF reading for
-their zone. All nine range-specific raw TSC measurements remain available as
-diagnostic sensors and are never replaced or averaged.
-
-Open the integration's **Configure** dialog and enter an independently measured
-`dry_count` and `wet_count` for bottom, middle, and top. Each wet count must be
-lower than its dry count. Until a complete valid calibration is saved, the
-corresponding moisture entity is unavailable; a raw count invalid sentinel also
-makes only that zone's moisture unavailable.
+Open the integration's **Configure** dialog and enter `dry_count` and
+`wet_count` for bottom, middle, and top. Each wet count must be lower than its
+dry count. Until a complete valid calibration is saved, the corresponding
+derived moisture entity is unavailable; a raw-count invalid sentinel makes
+only that zone's raw and derived entities unavailable.
 
 The charge-transfer count is inversely proportional to electrode capacitance,
-so calibration interpolates the reciprocal count rather than the count itself:
+so calibration interpolates the reciprocal count:
 
 ```text
 moisture =
@@ -91,60 +81,55 @@ moisture =
     / (count * (dry_count - wet_count))
 ```
 
-The result is clamped to 0–100%. A count at or above the dry point is 0%; a
-count at or below the wet point is 100%. Zero counts and calibrations where
-`dry_count <= wet_count` are invalid. Each zone is converted independently.
-The integration does not publish an overall/averaged moisture entity.
+The result is clamped to 0–100%. Zero counts and calibrations where
+`dry_count <= wet_count` are invalid. Each zone is converted independently;
+there is no overall or averaged moisture entity.
 
-## Custom protocol v2
+## Custom protocol v3
 
-The firmware emits one 31-byte advertisement consisting only of a
-manufacturer-specific AD element; it intentionally has no Flags AD element.
-All multibyte values are little-endian.
+The complete manufacturer-specific AD element is exactly 19 bytes. All
+multibyte values are little-endian.
 
-| Advertisement byte | Size | Value |
+| Advertisement offset | Size | Value |
 | ---: | ---: | --- |
-| 0 | 1 | AD length `0x1E` (30 following bytes) |
+| 0 | 1 | AD length `0x12` |
 | 1 | 1 | Manufacturer-specific AD type `0xFF` |
 | 2 | 2 | Development company ID `0xFFFF`, little-endian |
-| 4 | 27 | Manufacturer payload described below |
+| 4 | 15 | Manufacturer payload described below |
 
-Home Assistant normally removes the company ID and exposes the final 27 bytes
-as `manufacturer_data[0xFFFF]`. The integration rejects values shorter than 27
-bytes and protocol versions other than 2. If a Bluetooth stack supplies bytes
-after the complete payload, only the documented first 27 bytes are decoded.
+Home Assistant normally removes the company ID and exposes the final 15 bytes
+as `manufacturer_data[0xFFFF]`. The integration requires exactly 15 bytes and
+protocol version 3; truncated and trailing data are rejected.
 
-| Payload offset | Size | Field | Conversion / invalid value |
-| ---: | ---: | --- | --- |
-| 0 | 1 | Protocol version | Must equal `2` |
-| 1 | 1 | Packet ID | Unsigned; rolls over from 255 to 0 |
-| 2 | 2 | Bottom TSC, 1 nF | `0xFFFF` invalid |
-| 4 | 2 | Bottom TSC, 11 nF | `0xFFFF` invalid |
-| 6 | 2 | Bottom TSC, 48 nF | `0xFFFF` invalid |
-| 8 | 2 | Middle TSC, 1 nF | `0xFFFF` invalid |
-| 10 | 2 | Middle TSC, 11 nF | `0xFFFF` invalid |
-| 12 | 2 | Middle TSC, 48 nF | `0xFFFF` invalid |
-| 14 | 2 | Top TSC, 1 nF | `0xFFFF` invalid |
-| 16 | 2 | Top TSC, 11 nF | `0xFFFF` invalid |
-| 18 | 2 | Top TSC, 48 nF | `0xFFFF` invalid |
-| 20 | 2 | Signed temperature | `int16 / 100` °C; `0x8000` invalid |
-| 22 | 2 | Relative humidity | `uint16 / 100` %; `0xFFFF` invalid |
-| 24 | 3 | Illuminance | `uint24 / 100` lux; `0xFFFFFF` invalid |
+| Payload offset | Size | Type | Field | Conversion / invalid value |
+| ---: | ---: | --- | --- | --- |
+| 0 | 1 | `uint8` | Protocol version | Must equal `3` |
+| 1 | 1 | `uint8` | Packet ID | Rolls over from 255 to 0 |
+| 2 | 2 | `uint16` | Bottom raw TSC | `0xFFFF` invalid |
+| 4 | 2 | `uint16` | Middle raw TSC | `0xFFFF` invalid |
+| 6 | 2 | `uint16` | Top raw TSC | `0xFFFF` invalid |
+| 8 | 2 | `int16` | Temperature | Divide by 100 for °C; `0x8000` invalid |
+| 10 | 2 | `uint16` | Relative humidity | Divide by 100 for %; `0xFFFF` invalid |
+| 12 | 3 | `uint24` | Illuminance | Divide by 100 for lux; `0xFFFFFF` invalid |
 
-The reference manufacturer payload is:
+Reference Home Assistant manufacturer payload:
 
 ```text
-02 2A
-E8 03 4C 04 B0 04
-D0 07 34 08 98 08
-B8 0B 1C 0C 80 0C
-29 09
-2E 16
-39 30 00
+03 2A E8 03 D0 07 B8 0B 29 09 2E 16 39 30 00
 ```
 
-It decodes to packet ID 42; bottom TSC 1000/1100/1200; middle TSC
-2000/2100/2200; top TSC 3000/3100/3200; 23.45 °C; 56.78%; and 123.45 lux.
+Reference complete AD element:
+
+```text
+12 FF FF FF 03 2A E8 03 D0 07 B8 0B 29 09 2E 16 39 30 00
+```
+
+It decodes to packet ID 42; bottom/middle/top raw TSC counts
+1000/2000/3000; 23.45 °C; 56.78%; and 123.45 lux.
+
+Protocol v2 advertisements are no longer parsed. Existing config entries are
+migrated in place, their obsolete range-specific entity-registry entries are
+removed, and the three stable generic raw-count entity keys are retained.
 
 ## Development Company Identifier
 
@@ -156,8 +141,8 @@ all of the following in one release:
 2. `manufacturer_id` in `custom_components/plant_monitor_ble/manifest.json`
 3. Company-ID expectations and manufacturer-data fixtures in the tests
 
-The 27-byte payload must remain the manufacturer-data value; the company ID is
-the dictionary key and is not part of that value.
+The 15-byte payload remains the manufacturer-data value; the company ID is the
+dictionary key and is not part of that value.
 
 ## Troubleshooting
 
@@ -167,5 +152,5 @@ the dictionary key and is not part of that value.
   passive-capable proxy near the monitor.
 - Improve receiver placement and check the disabled RSSI diagnostic sensor.
 - A device using company ID `0xFFFF` is ignored unless its manufacturer payload
-  is at least 27 bytes, starts with protocol version 2, and passes value checks.
+  is exactly 15 bytes, starts with protocol version 3, and passes value checks.
 - Invalid sensor sentinels appear as unknown, never as zero.
